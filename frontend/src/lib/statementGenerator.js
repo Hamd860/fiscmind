@@ -1,180 +1,151 @@
-/*
- * statementGenerator.js
- *
- * Provides functions to build financial statements from a trial balance.  The
- * generator supports IFRS and ASC (US GAAP) presentation formats.  It relies
- * on a simplified chart of accounts defined in `accountMapping.js` to
- * categorize balances.  You can extend or replace the mapping to suit your
- * organization’s chart of accounts.
- */
+﻿import * as ACC from "./accountMapping";
 
-import { lookupAccount } from './accountMapping.js';
+/* -------- mapping fallback (works even if mapAccount isn't exported) -------- */
+const norm = (s) => (s ?? "").toString().trim().toLowerCase();
+const lookupMapping = (name) => {
+  const n = norm(name);
+  const dicts = [ACC.CHART, ACC.ALIASES, ACC.MAP, ACC.default].filter(Boolean);
 
-/**
- * Generate all statements (BS, IS, SOCIE, CF) from a trial balance.
- *
- * @param {Array<{account: string, debit: number, credit: number}>} tb
- *   Trial balance entries
- * @param {object} options
- *   Configuration object
- * @param {'IFRS'|'ASC'} options.standard
- *   Which accounting standard to use for presentation
- * @param {object} [options.classify] Optional overrides for cash flow
- *   classification.  Keys: interestIncome, interestExpense, dividendsReceived,
- *   dividendsPaid.  Values: 'operating'|'investing'|'financing'.
- * @returns {object}
- */
-export function generateStatements(tb, options = {}) {
-  const { standard = 'IFRS', classify = {} } = options;
-  const balanceSheet = buildBalanceSheet(tb, standard);
-  const incomeStatement = buildIncomeStatement(tb);
-  const socie = buildSOCIE(tb, incomeStatement);
-  const cashFlow = buildCashFlow(tb, incomeStatement, standard, classify);
-  return { balanceSheet, incomeStatement, socie, cashFlow };
-}
+  for (const d of dicts) {
+    if (d[name]) return d[name];
+    for (const k of Object.keys(d)) if (norm(k) === n) return d[k];
+  }
 
-/**
- * Build a balance sheet (statement of financial position).
- * @param {Array} tb
- * @param {string} standard
- */
-function buildBalanceSheet(tb, standard) {
-  // Aggregate balances by classification
+  // Heuristic mapping by keywords (covers common SaaS labels)
+  if (n.includes("revenue") || n.includes("sales")) return { type: "revenue" };
+  if (n.includes("cogs") || n.includes("cost of goods") || n.includes("hosting") || n.includes("infrastructure") || n.includes("support") || n.includes("licenses"))
+    return { type: "expense", subtype: "cogs" };
+  if (n.includes("expense") || n.includes("tax")) return { type: "expense" };
+
+  if (n.includes("accumulated") && (n.includes("depreciation") || n.includes("amort")))
+    return { type: "contra-asset" };
+
+  if (n.includes("cash") || n.includes("receivable") || n.includes("inventory") || n.includes("prepaid") || n.includes("deferred contract cost"))
+    return { type: "asset", subtype: "current" };
+
+  if (n.includes("property") || n.includes("equipment") || n.includes("intangible") || n.includes("goodwill") || n.includes("right-of-use") || n.includes("rou"))
+    return { type: "asset", subtype: "noncurrent" };
+
+  if (n.includes("payable") || n.includes("deferred revenue") || n.includes("accrued") || n.includes("lease liability") || n.includes("bank loan") || n.includes("loan")) {
+    const isNoncurrent = n.includes("noncurrent") || n.includes("long") || n.includes("non current");
+    return { type: "liability", subtype: isNoncurrent ? "noncurrent" : "current" };
+  }
+
+  if (n.includes("retained earning") || n.includes("share capital") || n.includes("additional paid-in capital") || n.includes("equity"))
+    return { type: "equity" };
+
+  return { type: "unmapped" };
+};
+
+const mapAccount = (name) => (typeof ACC.mapAccount === "function" ? ACC.mapAccount(name) : lookupMapping(name));
+
+/* -------------------- normal-balance helpers & numbers -------------------- */
+const normalSide = (type) => (["asset", "expense", "dividend"].includes(type) ? "debit" : "credit");
+const toNum = (v) => (v == null ? 0 : Number(v) || 0);
+const signedAmount = (row, type) => {
+  const d = toNum(row.debit), c = toNum(row.credit);
+  return normalSide(type) === "debit" ? d - c : c - d;
+};
+
+/* ------------------------------ main function ----------------------------- */
+export function generateStatements(rows, framework = "IFRS") {
   const totals = {
-    currentAssets: 0,
-    noncurrentAssets: 0,
-    currentLiabilities: 0,
-    noncurrentLiabilities: 0,
-    equity: 0,
+    assets: { current: 0, noncurrent: 0 },
+    liabilities: { current: 0, noncurrent: 0 },
+    equity: { total: 0 },
+    income: { revenue: 0, expense: 0, net: 0 },
+    socie: { openingRE: 0, dividends: 0, endingRE: 0 },
+    cashflow: { operating: 0, investing: 0, financing: 0 },
+    nonCash: { dep: 0, amort: 0, stockComp: 0 },
   };
-  for (const entry of tb) {
-    const classification = lookupAccount(entry.account);
-    const net = (entry.debit || 0) - (entry.credit || 0);
-    if (!classification) continue;
-    const { major, sub } = classification;
-    if (major === 'asset') {
-      if (sub === 'current') totals.currentAssets += net;
-      else totals.noncurrentAssets += net;
-    } else if (major === 'liability') {
-      if (sub === 'current') totals.currentLiabilities += net;
-      else totals.noncurrentLiabilities += net;
-    } else if (major === 'equity') {
-      totals.equity += net;
-    }
-  }
-  // Order assets and liabilities based on standard
-  const assetsOrder = standard === 'ASC' ? ['currentAssets', 'noncurrentAssets'] : ['noncurrentAssets', 'currentAssets'];
-  const liabilitiesOrder = standard === 'ASC' ? ['currentLiabilities', 'noncurrentLiabilities'] : ['noncurrentLiabilities', 'currentLiabilities'];
-  // Compose result
-  const assets = assetsOrder.map((key) => ({ label: formatLabel(key), amount: totals[key] }));
-  const liabilities = liabilitiesOrder.map((key) => ({ label: formatLabel(key), amount: totals[key] }));
-  const equity = [{ label: 'Equity', amount: totals.equity }];
-  return { assets, liabilities, equity };
-}
 
-/**
- * Build an income statement (statement of profit or loss).
- * @param {Array} tb
- */
-function buildIncomeStatement(tb) {
-  let totalRevenue = 0;
-  let totalExpenses = 0;
-  for (const entry of tb) {
-    const classification = lookupAccount(entry.account);
-    const net = (entry.debit || 0) - (entry.credit || 0);
-    if (!classification) continue;
-    if (classification.major === 'revenue') {
-      totalRevenue += -net; // credit balances reduce net (debit minus credit)
-    } else if (classification.major === 'expense') {
-      totalExpenses += net;
-    }
-  }
-  const netIncome = totalRevenue - totalExpenses;
-  return {
-    revenues: [{ label: 'Revenue', amount: totalRevenue }],
-    expenses: [{ label: 'Expenses', amount: totalExpenses }],
-    netIncome,
-  };
-}
+  for (const row of rows || []) {
+    const info = mapAccount(row.account) || {};
+    const type = info.type || "unmapped";
+    const sub = info.subtype;
 
-/**
- * Build the statement of changes in equity.  This simplified version
- * calculates ending retained earnings based on beginning retained earnings
- * (assumed zero), net income and dividends paid.
- * @param {Array} tb
- * @param {object} incomeStatement
- */
-function buildSOCIE(tb, incomeStatement) {
-  let dividends = 0;
-  for (const entry of tb) {
-    if (entry.account === 'Retained Earnings' || entry.account === 'Dividends') {
-      // For demonstration treat credit on Retained Earnings as dividends
-      dividends += (entry.credit || 0) - (entry.debit || 0);
+    // Income Statement
+    if (type === "revenue") totals.income.revenue += signedAmount(row, "revenue");
+    if (type === "expense") {
+      totals.income.expense += signedAmount(row, "expense");
+      const nm = norm(row.account);
+      if (nm.includes("depreciation")) totals.nonCash.dep += toNum(row.debit) - toNum(row.credit);
+      if (nm.includes("amortization")) totals.nonCash.amort += toNum(row.debit) - toNum(row.credit);
+      if (nm.includes("stock") && nm.includes("comp")) totals.nonCash.stockComp += toNum(row.debit) - toNum(row.credit);
     }
+
+    // Assets
+    if (type === "asset") {
+      const v = signedAmount(row, "asset");
+      (sub === "current" ? totals.assets.current : totals.assets.noncurrent) += v;
+    }
+
+    // Contra-assets
+    if (type === "contra-asset") {
+      const v = signedAmount(row, "contra-asset"); // credit-normal positive
+      (sub === "current" ? totals.assets.current : totals.assets.noncurrent) -= v;
+    }
+
+    // Liabilities
+    if (type === "liability") {
+      const v = signedAmount(row, "liability");
+      (sub === "current" ? totals.liabilities.current : totals.liabilities.noncurrent) += v;
+    }
+
+    // Equity (+ capture opening RE if present)
+    if (type === "equity") {
+      totals.equity.total += signedAmount(row, "equity");
+      const nm = norm(row.account);
+      if (nm.includes("retained") && nm.includes("earning")) {
+        totals.socie.openingRE += toNum(row.credit) - toNum(row.debit); // credit-normal
+      }
+    }
+
+    // Dividends (if mapped)
+    if (type === "dividend") totals.socie.dividends += signedAmount(row, "dividend"); // debit-normal
   }
-  const openingRE = 0;
-  const netIncome = incomeStatement.netIncome;
+
+  totals.income.net = totals.income.revenue - totals.income.expense;
+
+  // SOCIE rollforward
+  const netIncome = totals.income.net;
+  const dividends = totals.socie.dividends || 0;
+  const openingRE = totals.socie.openingRE || 0;
   const endingRE = openingRE + netIncome - dividends;
+  totals.socie = { openingRE, netIncome, dividends, endingRE };
+
+  // Simple CFO: net income + non-cash addbacks
+  const nonCash = (totals.nonCash.dep || 0) + (totals.nonCash.amort || 0) + (totals.nonCash.stockComp || 0);
+  totals.cashflow.operating = netIncome + nonCash;
+
   return {
-    openingRetainedEarnings: openingRE,
-    netIncome,
-    dividends,
-    endingRetainedEarnings: endingRE,
+    framework,
+    balanceSheet: {
+      assets: {
+        current: Math.abs(totals.assets.current),
+        noncurrent: Math.abs(totals.assets.noncurrent),
+      },
+      liabilities: {
+        current: Math.abs(totals.liabilities.current),
+        noncurrent: Math.abs(totals.liabilities.noncurrent),
+      },
+      equity: Math.abs(totals.equity.total),
+    },
+    incomeStatement: {
+      revenue: totals.income.revenue,
+      expenses: totals.income.expense,
+      netIncome: totals.income.net,
+    },
+    socie: {
+      openingRetainedEarnings: openingRE,
+      netIncome,
+      dividends,
+      endingRetainedEarnings: endingRE,
+    },
+    cashFlow: {
+      operating: totals.cashflow.operating,
+      investing: 0,
+      financing: 0,
+    },
   };
-}
-
-/**
- * Build a basic cash flow statement.  This implementation uses a very
- * simplified direct method: it classifies revenue and expense accounts into
- * operating activities and uses changes in balance sheet accounts to derive
- * investing and financing cash flows.  For a production system you would
- * implement a more robust algorithm.
- *
- * @param {Array} tb
- * @param {object} incomeStatement
- * @param {'IFRS'|'ASC'} standard
- * @param {object} classifyOverrides
- */
-function buildCashFlow(tb, incomeStatement, standard, classifyOverrides = {}) {
-  // Defaults per standard
-  const defaultClassification = {
-    interestIncome: standard === 'ASC' ? 'operating' : 'operating',
-    interestExpense: standard === 'ASC' ? 'operating' : 'operating',
-    dividendsReceived: standard === 'ASC' ? 'operating' : 'operating',
-    dividendsPaid: 'financing',
-  };
-  const classify = { ...defaultClassification, ...classifyOverrides };
-  const cashFlows = {
-    operating: 0,
-    investing: 0,
-    financing: 0,
-  };
-  for (const entry of tb) {
-    const net = (entry.debit || 0) - (entry.credit || 0);
-    const classification = lookupAccount(entry.account);
-    if (!classification) continue;
-    // Revenue and expenses affect operating cash
-    if (classification.major === 'revenue' || classification.major === 'expense') {
-      cashFlows.operating += net;
-    }
-    // Specific accounts override classification
-    if (entry.account === 'Interest Income') {
-      cashFlows[classify.interestIncome] += net;
-    } else if (entry.account === 'Interest Expense') {
-      cashFlows[classify.interestExpense] += net;
-    } else if (entry.account === 'Dividends Received') {
-      cashFlows[classify.dividendsReceived] += net;
-    } else if (entry.account === 'Dividends Paid') {
-      cashFlows[classify.dividendsPaid] += net;
-    }
-  }
-  return cashFlows;
-}
-
-// Format internal keys like "currentAssets" to human readable labels
-function formatLabel(key) {
-  return key
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/\b\w/g, (l) => l.toUpperCase())
-    .trim();
 }
