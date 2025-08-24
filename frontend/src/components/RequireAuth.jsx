@@ -1,27 +1,29 @@
 ﻿import { useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
+import { Navigate, Outlet } from "react-router-dom";
 import { auth, firebaseReady, firebaseConfigMissing } from "../firebase";
-import { Navigate } from "react-router-dom";
+import HealthBanner from "./HealthBanner";
 
-export default function RequireAuth({ children }) {
-  if (!firebaseReady) {
+export default function RequireAuth() {
+  const [user, setUser] = useState(null);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    if (!firebaseReady || !auth) { setChecking(false); return; }
+    const unsub = onAuthStateChanged(auth, (u) => { setUser(u); setChecking(false); });
+    return () => unsub && unsub();
+  }, []);
+
+  if (checking) return <div style={{padding:12}}>Loading…</div>;
+
+  if (!firebaseReady || !auth) {
     return (
-      <div style={{ padding: "1rem" }}>
-        <b>Configuration error:</b> Firebase environment variables are missing.
-        <div style={{ marginTop: 8 }}>
-          Missing keys: {firebaseConfigMissing.join(", ")}
-        </div>
-      </div>
+      <HealthBanner
+        kind="warn"
+        message={`Firebase not initialised. Missing: ${firebaseConfigMissing.join(", ") || "unknown"}`}
+      />
     );
   }
 
-  const [user, setUser] = useState(undefined);
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, setUser);
-    return () => unsub();
-  }, []);
-
-  if (user === undefined) return <div style={{ padding: "1rem" }}>Loading…</div>;
-  if (!user) return <Navigate to="/" replace />;
-  return children;
+  return user ? <Outlet /> : <Navigate to="/login" replace />;
 }

@@ -11,21 +11,15 @@ const cfg = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+// Which keys are missing (if any)
 export const firebaseConfigMissing = Object.entries(cfg)
   .filter(([, v]) => !v)
   .map(([k]) => k);
 
+// Ready only when no keys are missing
 export const firebaseReady = firebaseConfigMissing.length === 0;
 
-let app, auth, db; // declare first (NOT exported yet)
-
-if (firebaseReady) {
-  app = getApps()[0] || initializeApp(cfg);
-  auth = getAuth(app);
-  db = getFirestore(app);
-} else {
-  console.error("[fiscmind] Missing Firebase keys:", firebaseConfigMissing);
-}
-
-export { app, auth, db };      // single named export
-export default app;            // optional default export
+// Create singletons safely (no duplicate exports)
+export const app  = firebaseReady ? (getApps()[0] ?? initializeApp(cfg)) : undefined;
+export const auth = app ? getAuth(app) : undefined;
+export const db   = app ? getFirestore(app) : undefined;
