@@ -1,8 +1,7 @@
 ﻿import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore"; // ← add this
+import { getFirestore } from "firebase/firestore";
 
-// Read Vite env (client-side)
 const cfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -12,17 +11,21 @@ const cfg = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const missing = Object.entries(cfg)
+export const firebaseConfigMissing = Object.entries(cfg)
   .filter(([, v]) => !v)
   .map(([k]) => k);
 
-export const firebaseConfigMissing = missing;
-export const firebaseReady = missing.length === 0;
+export const firebaseReady = firebaseConfigMissing.length === 0;
 
-if (!firebaseReady) {
-  console.error("FISCMIND: Missing Firebase env keys:", missing);
+let app, auth, db; // declare first (NOT exported yet)
+
+if (firebaseReady) {
+  app = getApps()[0] || initializeApp(cfg);
+  auth = getAuth(app);
+  db = getFirestore(app);
+} else {
+  console.error("[fiscmind] Missing Firebase keys:", firebaseConfigMissing);
 }
 
-export const app  = firebaseReady ? (getApps()[0] || initializeApp(cfg)) : undefined;
-export const auth = firebaseReady ? getAuth(app) : undefined;
-export const db   = firebaseReady ? getFirestore(app) : undefined; // ← export db
+export { app, auth, db };      // single named export
+export default app;            // optional default export
