@@ -7,8 +7,8 @@ const lookupMapping = (name) => {
   const dicts = [ACC.CHART, ACC.ALIASES, ACC.MAP, ACC.default].filter(Boolean);
 
   for (const d of dicts) {
-    if (d[name]) return d[name];
-    for (const k of Object.keys(d)) if (norm(k) === n) return d[k];
+    if (d && d[name]) return d[name];
+    if (d) for (const k of Object.keys(d)) if (norm(k) === n) return d[k];
   }
 
   // Heuristic mapping by keywords (covers common SaaS labels)
@@ -77,19 +77,22 @@ export function generateStatements(rows, framework = "IFRS") {
     // Assets
     if (type === "asset") {
       const v = signedAmount(row, "asset");
-      (sub === "current" ? totals.assets.current : totals.assets.noncurrent) += v;
+      if (sub === "current") totals.assets.current += v;
+      else totals.assets.noncurrent += v;
     }
 
     // Contra-assets
     if (type === "contra-asset") {
       const v = signedAmount(row, "contra-asset"); // credit-normal positive
-      (sub === "current" ? totals.assets.current : totals.assets.noncurrent) -= v;
+      if (sub === "current") totals.assets.current -= v;
+      else totals.assets.noncurrent -= v;
     }
 
     // Liabilities
     if (type === "liability") {
       const v = signedAmount(row, "liability");
-      (sub === "current" ? totals.liabilities.current : totals.liabilities.noncurrent) += v;
+      if (sub === "current") totals.liabilities.current += v;
+      else totals.liabilities.noncurrent += v;
     }
 
     // Equity (+ capture opening RE if present)
