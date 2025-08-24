@@ -1,5 +1,6 @@
 ﻿import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore"; // ← add this
 
 // Read Vite env (client-side)
 const cfg = {
@@ -22,8 +23,6 @@ if (!firebaseReady) {
   console.error("FISCMIND: Missing Firebase env keys:", missing);
 }
 
-export const app = firebaseReady
-  ? (getApps()[0] || initializeApp(cfg))
-  : undefined;
-
+export const app  = firebaseReady ? (getApps()[0] || initializeApp(cfg)) : undefined;
 export const auth = firebaseReady ? getAuth(app) : undefined;
+export const db   = firebaseReady ? getFirestore(app) : undefined; // ← export db
