@@ -4,7 +4,7 @@
 const norm = (s) => (s ?? "").toString().trim().toLowerCase();
 const lookupMapping = (name) => {
   const n = norm(name);
-  const dicts = [ACC.CHART, ACC.ALIASES, ACC.MAP, ACC.default].filter(Boolean);
+  const dicts = ['CHART','ALIASES','MAP','default'].map(k => ACC && ACC[k]).filter(Boolean);
 
   for (const d of dicts) {
     if (d && d[name]) return d[name];
