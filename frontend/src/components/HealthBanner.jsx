@@ -1,13 +1,16 @@
-﻿export default function HealthBanner({ kind="info", message }) {
-  const styles = {
-    base: "padding:10px;border-radius:8px;margin:12px 0;font:14px/1.4 system-ui;",
-    info: "background:#eef5ff;border:1px solid #cfe1ff;color:#0b3d91;",
-    warn: "background:#fff8e6;border:1px solid #ffde8a;color:#8a5a00;",
-    err:  "background:#ffecec;border:1px solid #ffb3b3;color:#7a0000;",
-  };
+﻿export default function HealthBanner({ kind = "info", message = "" }) {
+  const map = {
+    info:  { ring:"ring-blue-200",   bg:"bg-blue-50",   text:"text-blue-700",  icon:"ℹ️" },
+    warn:  { ring:"ring-amber-200",  bg:"bg-amber-50",  text:"text-amber-800", icon:"⚠️" },
+    ok:    { ring:"ring-emerald-200",bg:"bg-emerald-50",text:"text-emerald-700",icon:"✅" },
+    error: { ring:"ring-rose-200",   bg:"bg-rose-50",   text:"text-rose-700",  icon:"⛔" },
+  }[kind] || {};
   return (
-    <div style={{cssText: styles.base + styles[kind]}}>
-      {message}
+    <div className={`mx-auto my-4 max-w-5xl rounded-xl ring-1 ${map.ring} ${map.bg} ${map.text} px-3 py-2`}>
+      <div className="flex items-center gap-2 text-sm">
+        <span aria-hidden>{map.icon}</span>
+        <p className="truncate">{message}</p>
+      </div>
     </div>
   );
 }

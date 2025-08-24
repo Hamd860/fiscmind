@@ -1,31 +1,41 @@
-﻿import { Routes, Route, Navigate } from "react-router-dom";
+﻿import { Routes, Route, Navigate, Link, Outlet } from "react-router-dom";
 import HealthBanner from "./components/HealthBanner";
 import RequireAuth from "./components/RequireAuth";
-
 import Login from "./components/Login.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 
+function Shell({ children }) {
+  return (
+    <div className="min-h-screen">
+      <header className="border-b bg-white/70 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+          <Link to="/dashboard" className="text-lg font-semibold tracking-tight text-slate-800">
+            Fiscmind
+          </Link>
+          <nav className="text-sm">
+            <Link className="hover:underline" to="/dashboard">Dashboard</Link>
+          </nav>
+        </div>
+      </header>
+
+      <HealthBanner kind="info" message="Welcome to Fiscmind" />
+      <main className="mx-auto max-w-6xl px-4 pb-16">{children}</main>
+    </div>
+  );
+}
+
 export default function App() {
   return (
-    <>
-      {/* UI that should always show, but NOT inside <Routes> */}
-      <HealthBanner kind="info" message="Welcome to Fiscmind" />
-
+    <Shell>
       <Routes>
-        {/* redirect root to dashboard */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
-        {/* public */}
         <Route path="/login" element={<Login />} />
-
-        {/* protected branch */}
         <Route element={<RequireAuth />}>
           <Route path="/dashboard" element={<Dashboard />} />
         </Route>
-
-        {/* 404 */}
-        <Route path="*" element={<div style={{ padding: 12 }}>Not Found</div>} />
+        <Route path="*" element={<div className="text-sm text-slate-600 p-4">Not Found</div>} />
       </Routes>
-    </>
+      <Outlet />
+    </Shell>
   );
 }
