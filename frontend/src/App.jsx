@@ -1,4 +1,4 @@
-﻿import { Routes, Route, Navigate, Link, Outlet } from "react-router-dom";
+import { Routes, Route, Navigate, Link, Outlet } from "react-router-dom";
 import HealthBanner from "./components/HealthBanner";
 import RequireAuth from "./components/RequireAuth";
 import Login from "./components/Login.jsx";
@@ -30,7 +30,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/login" element={<Login />} />
-        <Route element={<RequireAuth />}>
+        <Route element={<RequireAuth />}><Route path="/upload" element={<UploadPage />} />
           <Route path="/dashboard" element={<Dashboard />} />
         </Route>
         <Route path="*" element={<div className="text-sm text-slate-600 p-4">Not Found</div>} />
