@@ -1,13 +1,8 @@
-// firebase.js
-// Centralized initialization of Firebase services.  Replace the environment
-// variables with your own Firebase project configuration.  Vite exposes
-// variables prefixed with `VITE_` at build time.
+﻿import { initializeApp, getApps } from "firebase/app";
+import { getAuth } from "firebase/auth";
 
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-
-const firebaseConfig = {
+// Read Vite env (client-side)
+const cfg = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -16,9 +11,19 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase only once
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+const missing = Object.entries(cfg)
+  .filter(([, v]) => !v)
+  .map(([k]) => k);
 
-export { app, auth, db };
+export const firebaseConfigMissing = missing;
+export const firebaseReady = missing.length === 0;
+
+if (!firebaseReady) {
+  console.error("FISCMIND: Missing Firebase env keys:", missing);
+}
+
+export const app = firebaseReady
+  ? (getApps()[0] || initializeApp(cfg))
+  : undefined;
+
+export const auth = firebaseReady ? getAuth(app) : undefined;
